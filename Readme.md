@@ -27,7 +27,7 @@
 
 **The Eepiration checker affiliate link** project is designed to automatically verify the status and validity of affiliate links. This helps ensure that all affiliate links are functioning correctly and are not broken or expired, which is crucial for maintaining revenue and user trust.
 
-## Features <a name = "feature"></a>
+## ✨ Features <a name = "features"></a>
 - **Automated Link Verification:** Automatically checks the status of affiliate links.
 - **Detailed Reporting:** Provides detailed reports on the status of each link.
 - **Batch Processing:** Allows for the processing of multiple links simultaneously.
