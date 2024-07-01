@@ -1,0 +1,17 @@
+beautifulsoup4
+elastic_apm
+elasticsearch<8.0.0,>=7.0.0
+urllib3<2.0.0a1
+fastapi
+pandas
+pydantic_core
+pydantic
+pymongo
+python-dotenv
+requests
+typing_extensions
+pymysql
+pytest
+uvicorn
+starlette
+lxml
