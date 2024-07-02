@@ -59,6 +59,9 @@ async def add_process_time_header(request: Request, call_next):
 from utils.manage_db import create_index_es
 create_index_es()
 
+from configs.db import check_redis_connection
+check_redis_connection()
+
 from routes.product_routes import product_route
 app.include_router(product_route)
 

@@ -2,6 +2,7 @@ from pymongo import MongoClient
 from elasticsearch import Elasticsearch
 import urllib.parse
 import os
+import redis
 
 # Load MongoDB connection details from environment variables
 mongodb_user = os.getenv('MONGODB_USER')
@@ -43,3 +44,29 @@ if es_user and es_password:
 
 # Create an Elasticsearch client instance
 es_client = Elasticsearch(**es_config)
+
+def create_redis_client():
+    # Base configuration
+    redis_params = {
+        "host": os.getenv('REDIS_HOST'),
+        "port": os.getenv('REDIS_PORT'),
+        "db": os.getenv('REDIS_DB'),
+        "decode_responses": True
+    }
+    
+    # Add optional username and password
+    if os.getenv('REDIS_USER'):
+        redis_params["username"] = os.getenv('REDIS_USER')
+    if os.getenv('REDIS_PASSWORD'):
+        redis_params["password"] = os.getenv('REDIS_PASSWORD')
+    return redis.StrictRedis(**redis_params)
+
+# Create Redis client using ENV values
+redis_client = create_redis_client()
+
+def check_redis_connection():
+    try:
+        redis_client.ping()
+        print("::: [\033[96mRedis\033[0m] connected \033[92msuccessfully\033[0m. :::")
+    except Exception as e:
+        print(f"\033[91mFailed\033[0m to connect to [\033[96mRedis\033[0m]: {e}")

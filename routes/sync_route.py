@@ -6,6 +6,7 @@ from configs.security import UnauthorizedMessage, get_token
 from configs.logger import logger
 from configs.db import (
     affiliate_link_collection,
+    redis_client
 )
 from controllers.elastic import Elastic
 from models.affiliate_link_model import AffiliateLinkModel
@@ -13,7 +14,7 @@ from models.product_model import ProductModel
 from routes.affiliate_link_routes import insert_affiliate_link, update_affiliate_link, delete_affiliate_link
 from routes.product_routes import insert_product, update_product, delete_product
 from utils.exception_handling import handle_exceptions
-import pymysql, os, json
+import pymysql, os, json, asyncio
 from datetime import datetime
 from dateutil import parser
 from dotenv import load_dotenv, dotenv_values, set_key
@@ -21,6 +22,7 @@ load_dotenv()
 
 affiliate_sync_route = APIRouter(tags=["SYNC"])
 elastic = Elastic()
+redis_client.delete('affiliate_re_check_progress')
 
 # Connect to MySQL
 def connect_mysql():
@@ -251,7 +253,31 @@ async def check_amount_all_link(
     return {"total": all_link}
 
 
-@affiliate_sync_route.get(
+async def check_all_link(all_link, progress, token_auth):
+    try:
+        for i, link in enumerate(all_link):
+            link['check_date'] = datetime.now()
+            link['description'] = link['description'].split(':')[0] if len(link['description'].split(':')) > 1 else ''
+            id = link.pop('_id')
+            link_model = AffiliateLinkModel(**link)
+            res = await update_affiliate_link(id, link_model, token_auth)
+            if res['detail'] == 'Update successful.':
+                progress['success'] += 1
+            else:
+                progress['fail'] += 1
+                progress['fail_link'].append(link)
+            progress['progress'] = i + 1
+            redis_client.set('affiliate_re_check_progress', json.dumps(progress), ex=int(os.getenv('CACHE_EX')))
+            await asyncio.sleep(0.1)
+        progress['status'] = 'done'
+        progress['error'] = ''
+    except Exception as e:
+        progress['status'] = 'fail'
+        progress['error'] = str(e)
+    progress['running'] = False
+    redis_client.set('affiliate_re_check_progress', json.dumps(progress), ex=int(os.getenv('CACHE_EX')))
+
+@affiliate_sync_route.post(
     "/affiliate/check/product/all",
     responses={status.HTTP_401_UNAUTHORIZED: dict(model=UnauthorizedMessage)},
     status_code=status.HTTP_200_OK,
@@ -262,27 +288,29 @@ async def check_aff_all_link(
     end_date: datetime = datetime.now(),
     token_auth: str = Depends(get_token)
 ):
-    await sync_database(token_auth)
-    results = {'success': [], 'fail': []}
+    cached_progress_status = redis_client.get('affiliate_re_check_progress')
+    if cached_progress_status and json.loads(cached_progress_status).get('running', False):
+        return {"re-check status": "Re-check in progress"}
     
+    await sync_database(token_auth)
     find_query = {'check_date': {'$lte': end_date}}
     if start_date:
         find_query['check_date']['$gte'] = start_date
     all_link = affiliate_link_collection.find(find_query)
     all_link = list(all_link)
-    logger.info(f"Total: {len(all_link)}")
-    for i, link in enumerate(all_link):
-        link['check_date'] = datetime.now()
-        link['description'] = link['description'].split(':')[0] if len(link['description'].split(':')) > 1 else ''
-        id = link.pop('_id')
-        link_model = AffiliateLinkModel(**link)
-        res = await update_affiliate_link(id, link_model, token_auth)
-        if res['detail'] == 'Update successful.':
-            results['success'].append(link)
-        else:
-            results['fail'].append(link)
-        logger.info(f"Progress: {i+1}/{len(all_link)}")
-    return results
+    
+    progress = {'total': len(all_link), 'success': 0, 'fail': 0, 'progress': 0, 'fail_link': [], 'status': 'inprogress', 'running': True, 'error': ''}
+    redis_client.set('affiliate_re_check_progress', json.dumps(progress), ex=int(os.getenv('CACHE_EX')))
+    asyncio.run_coroutine_threadsafe(check_all_link(all_link, progress.copy(), token_auth), loop=asyncio.get_running_loop())
+    return progress
+
+
+@affiliate_sync_route.get('/affiliate/check/product/all/status')
+async def re_check_status():
+    cached_progress_status = redis_client.get('affiliate_re_check_progress')
+    if cached_progress_status:
+        return {"re-check status": json.loads(cached_progress_status)}
+    return {"re-check status": "No re-check in progress"}
 
 
 @affiliate_sync_route.get(
@@ -295,6 +323,10 @@ async def check_aff_id_prod(
     product_id: int,
     token_auth: str = Depends(get_token)
 ):
+    cached_progress_status = redis_client.get('affiliate_re_check_progress')
+    if cached_progress_status and json.loads(cached_progress_status).get('running', False):
+        return {"re-check status": "Re-check in progress"}
+    
     await sync_database(token_auth)
     results = {'success': [], 'fail': []}
     all_link = affiliate_link_collection.find({'product_id': product_id})
