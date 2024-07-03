@@ -222,6 +222,9 @@ async def check_delete_data(info, mysql_cursor, token_auth):
 async def sync_database(
     token_auth: str = Depends(get_token)
 ):
+    cached_progress_status = redis_client.get('affiliate_re_check_progress')
+    if cached_progress_status and json.loads(cached_progress_status).get('running', False):
+        return {"re_check_status": "Re-check in progress", "detail": "Re-check in progress"}
     mysql_cursor, mysql_conn = connect_mysql()
     
     info = {'product_inserted':[], 'product_updated':[], 'product_deleted':[], 'link_checked': [], 'not_sync':[]}
@@ -245,7 +248,6 @@ async def check_amount_all_link(
     end_date: datetime = datetime.now(),
     token_auth: str = Depends(get_token)
 ):
-    await sync_database(token_auth)
     find_query = {'check_date': {'$lte': end_date}}
     if start_date:
         find_query['check_date']['$gte'] = start_date
@@ -285,15 +287,15 @@ async def check_all_link(all_link, progress, token_auth):
 # @handle_exceptions
 async def check_aff_all_link(
     start_date: datetime = None,
-    end_date: datetime = datetime.now(),
+    end_date: datetime = None,
     token_auth: str = Depends(get_token)
 ):
     cached_progress_status = redis_client.get('affiliate_re_check_progress')
     if cached_progress_status and json.loads(cached_progress_status).get('running', False):
-        return {"re-check status": "Re-check in progress"}
+        return {"re_check_status": "Re-check in progress"}
     
     await sync_database(token_auth)
-    find_query = {'check_date': {'$lte': end_date}}
+    find_query = {'check_date': {'$lte': end_date if end_date else datetime.now()}}
     if start_date:
         find_query['check_date']['$gte'] = start_date
     all_link = affiliate_link_collection.find(find_query)
@@ -309,8 +311,8 @@ async def check_aff_all_link(
 async def re_check_status():
     cached_progress_status = redis_client.get('affiliate_re_check_progress')
     if cached_progress_status:
-        return {"re-check status": json.loads(cached_progress_status)}
-    return {"re-check status": "No re-check in progress"}
+        return {"re_check_status": json.loads(cached_progress_status)}
+    return {"re_check_status": "No re-check in progress"}
 
 
 @affiliate_sync_route.get(
@@ -325,7 +327,7 @@ async def check_aff_id_prod(
 ):
     cached_progress_status = redis_client.get('affiliate_re_check_progress')
     if cached_progress_status and json.loads(cached_progress_status).get('running', False):
-        return {"re-check status": "Re-check in progress"}
+        return {"re_check_status": "Re-check in progress"}
     
     await sync_database(token_auth)
     results = {'success': [], 'fail': []}
