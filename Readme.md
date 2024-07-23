@@ -124,17 +124,15 @@ These technologies were chosen for their performance, scalability, and ease of u
 
 # Version History
 
+## [0.0.2] (2024-07-23)
+### Fixed
+- Pydantic model type issue: now uses `datetime`.
+
 ## [0.0.1] (2024-07-02)
-
-- Release date: July 2, 2024
-
 ### Added
 - Progress bar when re-check all affiliate link.
 
 ## [0.0.0] (2024-07-01)
-
-- Release date: July 1, 2024
-
 ### Added
 - Initial release of the project.
 
